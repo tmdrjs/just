@@ -20,6 +20,8 @@ export interface Agenda {
   status: AgendaStatus;
   conclusion: string | null;
   created_by: string | null;
+  /** 상위 안건 (null = 최상위) */
+  parent_id: string | null;
   created_at: string;
   updated_at: string;
   last_activity_at: string;

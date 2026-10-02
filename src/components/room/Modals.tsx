@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import {
   createAgenda,
   deleteAgenda,
@@ -9,8 +9,15 @@ import {
   selectAgenda,
   updateAgenda,
 } from "@/lib/actions";
-import { CONCLUSION_MAX, DESCRIPTION_MAX, memberColor, STATUS_LABEL, TITLE_MAX } from "@/lib/constants";
+import {
+  CONCLUSION_MAX,
+  DESCRIPTION_MAX,
+  memberColor,
+  STATUS_LABEL,
+  TITLE_MAX,
+} from "@/lib/constants";
 import { formatDate } from "@/lib/format";
+import { buildChildren, flattenTree, selfAndDescendants } from "@/lib/tree";
 import { closeModal, showToast, useRoom } from "@/lib/store";
 import type { AgendaStatus, Message } from "@/lib/types";
 import { Button, Spinner } from "../ui/Button";
@@ -22,7 +29,13 @@ export function Modals({ onLeft }: { onLeft: () => void }) {
   if (!modal) return null;
   switch (modal.kind) {
     case "agenda":
-      return <AgendaFormModal key={modal.agendaId ?? "new"} agendaId={modal.agendaId} />;
+      return (
+        <AgendaFormModal
+          key={modal.agendaId ?? `new:${modal.parentId ?? ""}`}
+          agendaId={modal.agendaId}
+          initialParentId={modal.parentId}
+        />
+      );
     case "conclusion":
       return <ConclusionModal agendaId={modal.agendaId} status={modal.status} />;
     case "deleteAgenda":
@@ -34,8 +47,21 @@ export function Modals({ onLeft }: { onLeft: () => void }) {
   }
 }
 
-function AgendaFormModal({ agendaId }: { agendaId?: string }) {
+function AgendaFormModal({ agendaId, initialParentId }: { agendaId?: string; initialParentId?: string }) {
   const existing = useRoom((s) => (agendaId ? s.agendas[agendaId] : undefined));
+  const agendas = useRoom((s) => s.agendas);
+  // 새로 만들 때는 상위가 이미 정해져 있다: 노드의 + → 그 안건의 하위, 빈 곳 더블클릭 → 최상위
+  const parentTitle = initialParentId ? agendas[initialParentId]?.title : undefined;
+  const [parentId, setParentId] = useState<string | null>(
+    existing ? existing.parent_id : (initialParentId ?? null),
+  );
+  // 자기 자신과 하위 안건은 상위로 고를 수 없다 (DB 트리거도 같은 규칙으로 막는다)
+  const parentOptions = useMemo(() => {
+    const flat = flattenTree(agendas);
+    if (!agendaId) return flat;
+    const excluded = selfAndDescendants(agendaId, buildChildren(agendas).children);
+    return flat.filter((x) => !excluded.has(x.agenda.id));
+  }, [agendas, agendaId]);
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [busy, setBusy] = useState(false);
@@ -46,23 +72,31 @@ function AgendaFormModal({ agendaId }: { agendaId?: string }) {
     const t = title.trim();
     if (!t || busy) return;
     setBusy(true);
+    const input = {
+      title: t,
+      description: description.trim() || null,
+      parent_id: parentId,
+    };
     if (isEdit && agendaId) {
-      const ok = await updateAgenda(agendaId, { title: t, description: description.trim() || null });
+      const ok = await updateAgenda(agendaId, input);
       setBusy(false);
       if (ok) closeModal();
     } else {
-      const created = await createAgenda(t, description.trim());
+      const created = await createAgenda(input);
       setBusy(false);
       if (created) {
         closeModal();
+        // 모바일에서 마인드맵 화면에서 만든 경우 마인드맵에 머문다
+        const stay = useRoom.getState().panel === "list";
         selectAgenda(created.id);
+        if (stay) useRoom.setState({ panel: "list" });
       }
     }
   }
 
   return (
     <Modal
-      title={isEdit ? "안건 수정" : "새 안건"}
+      title={isEdit ? "안건 수정" : initialParentId ? "새 하위 안건" : "새 안건"}
       onClose={closeModal}
       footer={
         <>
@@ -76,6 +110,17 @@ function AgendaFormModal({ agendaId }: { agendaId?: string }) {
       }
     >
       <form onSubmit={submit} className="flex flex-col gap-4">
+        {!isEdit && (
+          <p className="-mt-1 truncate text-xs text-muted">
+            {initialParentId ? (
+              <>
+                <b className="font-medium text-sub">{parentTitle ?? "선택한 안건"}</b> 의 하위 안건으로 만들어요.
+              </>
+            ) : (
+              "최상위 안건으로 만들어요."
+            )}
+          </p>
+        )}
         <div>
           <Label hint={`${title.length}/${TITLE_MAX}`}>제목</Label>
           <TextInput
@@ -92,10 +137,28 @@ function AgendaFormModal({ agendaId }: { agendaId?: string }) {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             maxLength={DESCRIPTION_MAX}
-            rows={4}
+            rows={3}
             placeholder="무엇을 정해야 하는지, 배경이나 선택지를 적어 두세요."
           />
         </div>
+        {/* 상위 안건 변경은 수정할 때만 (마인드맵에서 위치를 옮기는 유일한 방법) */}
+        {isEdit && (
+          <div>
+            <Label hint="선택 안 하면 최상위">상위 안건</Label>
+            <select
+              value={parentId ?? ""}
+              onChange={(e) => setParentId(e.target.value || null)}
+              className="w-full rounded-lg border border-line bg-bg px-3 py-2.5 text-sm text-fg outline-none focus:border-accent/70"
+            >
+              <option value="">없음 (최상위 안건)</option>
+              {parentOptions.map(({ agenda, depth }) => (
+                <option key={agenda.id} value={agenda.id}>
+                  {"\u00a0\u00a0\u00a0".repeat(depth) + (depth ? "└ " : "") + agenda.title}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <button type="submit" hidden />
       </form>
     </Modal>

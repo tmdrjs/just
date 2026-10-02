@@ -94,6 +94,11 @@ export async function fetchMembers() {
   set({ members, membersLoaded: true, kicked: !members[get().userId] });
 }
 
+/** 마이그레이션 전 DB나 Realtime 행에서 빠진 필드를 채운다 */
+function normalizeAgenda(row: Agenda): Agenda {
+  return { ...row, parent_id: row.parent_id ?? null };
+}
+
 export async function fetchAgendas() {
   const { data, error } = await sb()
     .from("agendas")
@@ -101,7 +106,7 @@ export async function fetchAgendas() {
     .is("deleted_at", null)
     .order("last_activity_at", { ascending: false });
   if (error) return;
-  const agendas = Object.fromEntries((data as Agenda[]).map((a) => [a.id, a]));
+  const agendas = Object.fromEntries((data as Agenda[]).map((a) => [a.id, normalizeAgenda(a)]));
   const { selectedId } = get();
   set({
     agendas,
@@ -340,7 +345,7 @@ export function applyAgendaChange(row: Agenda) {
     set(patch);
     return;
   }
-  agendas[row.id] = row;
+  agendas[row.id] = normalizeAgenda(row);
   set({ agendas });
 }
 
@@ -437,23 +442,27 @@ export async function setPinned(message: Message, pinned: boolean) {
 // 안건 쓰기
 // ---------------------------------------------------------------------
 
-export async function createAgenda(title: string, description: string) {
-  const { data, error } = await sb()
-    .from("agendas")
-    .insert({ title, description: description || null })
-    .select()
-    .single();
+export interface AgendaInput {
+  title: string;
+  description: string | null;
+  parent_id: string | null;
+}
+
+export async function createAgenda(input: AgendaInput) {
+  const { data, error } = await sb().from("agendas").insert(input).select().single();
   if (error) {
-    handleWriteError(error, "안건을 만들지 못했어요.");
+    handleWriteError(error, agendaErrorMessage(error.message, "안건을 만들지 못했어요."));
     return null;
   }
   applyAgendaChange(data as Agenda);
-  return data as Agenda;
+  return normalizeAgenda(data as Agenda);
 }
 
 export async function updateAgenda(
   id: string,
-  patch: Partial<Pick<Agenda, "title" | "description" | "conclusion">> & { status?: AgendaStatus },
+  patch: Partial<Pick<Agenda, "title" | "description" | "conclusion" | "parent_id">> & {
+    status?: AgendaStatus;
+  },
 ) {
   const { data, error } = await sb().from("agendas").update(patch).eq("id", id).select().single();
   if (error) {
@@ -465,12 +474,18 @@ export async function updateAgenda(
 }
 
 /** DB 제약 위반을 이유가 보이는 문구로 바꾼다 */
-function agendaErrorMessage(message: string) {
+function agendaErrorMessage(message: string, fallback = "안건을 저장하지 못했어요.") {
+  if (message.includes("AGENDA_PARENT_CYCLE")) return "자신의 하위 안건을 상위 안건으로 고를 수 없어요.";
+  if (message.includes("AGENDA_PARENT_SELF")) return "자기 자신을 상위 안건으로 고를 수 없어요.";
+  if (message.includes("AGENDA_PARENT_INVALID")) return "고른 상위 안건이 삭제됐어요. 다시 골라 주세요.";
+  if (message.includes("parent_id") && /column|schema cache/.test(message)) {
+    return "DB에 상위 안건 컬럼이 아직 없어요. 마이그레이션(20261002040000_agenda_tree.sql)을 실행했는지 확인해 주세요.";
+  }
   if (message.includes("agendas_status_check")) {
     return "DB가 아직 새 상태를 몰라요. 상태 확장 마이그레이션(20261002020000_agenda_stages.sql)을 실행했는지 확인해 주세요.";
   }
   if (message.includes("conclusion")) return "확정 이후 단계는 결론이 꼭 있어야 해요.";
-  return "안건을 저장하지 못했어요.";
+  return fallback;
 }
 
 export async function deleteAgenda(id: string) {

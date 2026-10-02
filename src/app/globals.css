@@ -86,3 +86,22 @@ body {
 .typing-dot:nth-child(3) {
   animation-delay: 0.3s;
 }
+
+/* 마인드맵 (React Flow) 다크 테마를 앱 색에 맞춤 */
+.mindmap .react-flow {
+  --xy-background-color: transparent;
+  --xy-edge-stroke: #4a4a55;
+  --xy-controls-button-background-color: var(--color-elev);
+  --xy-controls-button-background-color-hover: var(--color-hover);
+  --xy-controls-button-color: var(--color-sub);
+  --xy-controls-button-color-hover: var(--color-fg);
+  --xy-controls-button-border-color: var(--color-line);
+  --xy-controls-box-shadow: 0 4px 16px rgb(0 0 0 / 0.4);
+  --xy-attribution-background-color: transparent;
+}
+.mindmap .react-flow__attribution a {
+  color: var(--color-muted);
+}
+.mindmap .react-flow__node {
+  cursor: pointer;
+}

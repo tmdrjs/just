@@ -25,7 +25,8 @@ export interface TypingInfo {
 export type Connection = "connecting" | "online" | "offline";
 
 export type ModalState =
-  | { kind: "agenda"; agendaId?: string }
+  /** agendaId: 수정할 안건, parentId: 새 안건의 상위 안건 미리 선택 */
+  | { kind: "agenda"; agendaId?: string; parentId?: string }
   /** status: 이 상태로 바꾸면서 결론 입력 (없으면 결론만 수정) */
   | { kind: "conclusion"; agendaId: string; status?: AgendaStatus }
   | { kind: "deleteAgenda"; agendaId: string }
@@ -33,6 +34,12 @@ export type ModalState =
   | { kind: "settings" }
   | null;
 export type MobilePanel = "list" | "chat" | "info";
+
+/** 마인드맵 상태 필터 */
+export interface AgendaFilters {
+  status: "all" | AgendaStatus;
+}
+export const defaultFilters = (): AgendaFilters => ({ status: "all" });
 
 export interface RoomState {
   userId: string;
@@ -49,6 +56,7 @@ export interface RoomState {
   /** 다른 기기에서 다시 연결했거나 자리가 사라져 더 이상 멤버가 아님 */
   kicked: boolean;
   panel: MobilePanel;
+  filters: AgendaFilters;
   modal: ModalState;
   toast: { id: number; text: string } | null;
 }
@@ -67,6 +75,7 @@ export const initialRoomState = (userId: string): RoomState => ({
   connection: "connecting",
   kicked: false,
   panel: "list",
+  filters: defaultFilters(),
   modal: null,
   toast: null,
 });

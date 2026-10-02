@@ -1,13 +1,15 @@
 "use client";
 
-import { updateAgenda } from "@/lib/actions";
+import { useMemo } from "react";
+import { selectAgenda, updateAgenda } from "@/lib/actions";
 import { CONCLUSION_REQUIRED, memberColor, showsConclusion, STAGES, STATUS_LABEL } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
+import { ancestorsOf } from "@/lib/tree";
 import { openModal, useRoom } from "@/lib/store";
 import type { Agenda, AgendaStatus } from "@/lib/types";
 import { Button, IconButton } from "../ui/Button";
 import { Icon } from "../ui/Icon";
-import { STATUS_STYLE } from "./StatusBadge";
+import { STATUS_STYLE, StatusBadge } from "./StatusBadge";
 
 export function DetailPanel() {
   const agenda = useRoom((s) => (s.selectedId ? s.agendas[s.selectedId] : undefined));
@@ -16,7 +18,7 @@ export function DetailPanel() {
     <>
       <header className="flex items-center gap-2 border-b border-line px-4 py-3">
         <h2 className="flex-1 text-sm font-semibold text-sub">안건 정보</h2>
-        <IconButton label="닫기" className="lg:hidden" onClick={() => useRoom.setState({ panel: "chat" })}>
+        <IconButton label="닫기" onClick={() => useRoom.setState({ panel: "chat" })}>
           <Icon name="close" className="size-5" />
         </IconButton>
       </header>
@@ -28,6 +30,18 @@ export function DetailPanel() {
         )}
         <OnlineMembers />
       </div>
+      {/* 안건 삭제는 다른 동작과 떨어진 맨 아래에 따로 둔다 */}
+      {agenda && (
+        <footer className="border-t border-line px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <Button
+            variant="danger"
+            className="w-full text-xs"
+            onClick={() => openModal({ kind: "deleteAgenda", agendaId: agenda.id })}
+          >
+            <Icon name="trash" className="size-3.5" /> 안건 삭제
+          </Button>
+        </footer>
+      )}
     </>
   );
 }
@@ -64,6 +78,8 @@ function AgendaDetail({ agenda }: { agenda: Agenda }) {
           {formatDate(agenda.created_at)}에 만듦
         </p>
       </div>
+
+      <AgendaHierarchy agenda={agenda} />
 
       <section>
         <SectionTitle>진행 단계</SectionTitle>
@@ -157,14 +173,62 @@ function AgendaDetail({ agenda }: { agenda: Agenda }) {
         )}
       </section>
 
-      <Button
-        variant="ghost"
-        className="self-start px-2 text-xs text-muted hover:text-accent-hover"
-        onClick={() => openModal({ kind: "deleteAgenda", agendaId: agenda.id })}
-      >
-        <Icon name="trash" className="size-3.5" /> 안건 삭제
-      </Button>
     </div>
+  );
+}
+
+/** 상위 경로(빵부스러기)와 하위 안건 목록 */
+function AgendaHierarchy({ agenda }: { agenda: Agenda }) {
+  const agendas = useRoom((s) => s.agendas);
+  const path = useMemo(() => ancestorsOf(agenda.id, agendas), [agenda.id, agendas]);
+  const children = useMemo(
+    () =>
+      Object.values(agendas)
+        .filter((a) => a.parent_id === agenda.id)
+        .sort((a, b) => a.created_at.localeCompare(b.created_at)),
+    [agenda.id, agendas],
+  );
+
+  return (
+    <section>
+      <SectionTitle>구조</SectionTitle>
+      {path.length > 0 ? (
+        <nav aria-label="상위 안건" className="mb-2 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs text-muted">
+          {path.map((p) => (
+            <span key={p.id} className="flex min-w-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => selectAgenda(p.id)}
+                className="max-w-[10rem] truncate hover:text-fg hover:underline"
+              >
+                {p.title}
+              </button>
+              <span aria-hidden>›</span>
+            </span>
+          ))}
+          <span className="text-sub">이 안건</span>
+        </nav>
+      ) : (
+        <p className="mb-2 text-xs text-muted">최상위 안건이에요.</p>
+      )}
+      {children.length > 0 && (
+        <ul className="mb-1 flex flex-col">
+          {children.map((c) => (
+            <li key={c.id}>
+              <button
+                type="button"
+                onClick={() => selectAgenda(c.id)}
+                className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm text-sub hover:bg-hover hover:text-fg"
+              >
+                <span className="text-muted">└</span>
+                <span className="min-w-0 flex-1 truncate">{c.title}</span>
+                <StatusBadge status={c.status} small />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

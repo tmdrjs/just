@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import { fetchAgendas, fetchMembers, fetchUnread, onVisible } from "@/lib/actions";
 import { connectRealtime } from "@/lib/realtime";
 import { initialRoomState, useRoom } from "@/lib/store";
 import { Spinner } from "../ui/Button";
 import { Icon } from "../ui/Icon";
-import { AgendaList } from "./AgendaList";
+import { AgendaSidebar } from "./AgendaSidebar";
 import { ChatPanel } from "./ChatPanel";
 import { DetailPanel } from "./DetailPanel";
 import { Modals } from "./Modals";
+import { CHAT_MIN_PX, MAP_MIN_PX, SplitDivider, useSplitRatio } from "./SplitDivider";
 
 const KICKED_NOTICE =
   "다른 기기에서 이 닉네임으로 다시 연결했거나 자리가 비워져서, 이 브라우저의 연결이 해제됐어요.";
@@ -18,6 +19,8 @@ export function Room({ userId, onExit }: { userId: string; onExit: (notice?: str
   const ready = useRoom((s) => s.userId === userId && s.membersLoaded && s.agendasLoaded);
   const kicked = useRoom((s) => s.kicked);
   const panel = useRoom((s) => s.panel);
+  const splitRef = useRef<HTMLDivElement>(null);
+  const [mapRatio, setMapRatio] = useSplitRatio();
   const connection = useRoom((s) => s.connection);
   const toast = useRoom((s) => s.toast);
   const totalUnread = useRoom((s) => Object.values(s.unread).reduce((a, b) => a + b, 0));
@@ -72,23 +75,37 @@ export function Room({ userId, onExit }: { userId: string; onExit: (notice?: str
           연결 끊김 · 다시 연결하는 중이에요. 연결되면 놓친 메시지를 자동으로 불러와요.
         </div>
       )}
-      <div className="flex min-h-0 flex-1">
+      {/* 왼쪽 마인드맵 | 경계선 | 대화. 안건 정보는 ⓘ 로 여는 서랍. 모바일은 한 화면씩 */}
+      <div
+        ref={splitRef}
+        className="flex min-h-0 flex-1"
+        style={
+          {
+            "--map-basis": `${mapRatio * 100}%`,
+            "--map-min": `${MAP_MIN_PX}px`,
+            "--chat-min": `${CHAT_MIN_PX}px`,
+          } as CSSProperties
+        }
+      >
         <aside
-          className={`${panel === "list" ? "flex" : "hidden"} w-full flex-col border-line bg-panel md:flex md:w-72 md:shrink-0 md:border-r`}
+          className={`${panel === "list" ? "flex" : "hidden"} w-full flex-col bg-panel md:flex md:w-auto md:min-w-(--map-min) md:shrink md:grow-0 md:basis-(--map-basis)`}
         >
-          <AgendaList />
+          <AgendaSidebar />
         </aside>
-        <main className={`${panel === "list" ? "hidden" : "flex"} min-w-0 flex-1 flex-col md:flex`}>
+        <SplitDivider containerRef={splitRef} ratio={mapRatio} onChange={setMapRatio} />
+        <main
+          className={`${panel === "list" ? "hidden" : "flex"} min-w-0 flex-1 flex-col md:flex md:min-w-(--chat-min)`}
+        >
           <ChatPanel />
         </main>
         <aside
-          className={`${panel === "info" ? "fixed inset-0 z-40 flex sm:left-auto sm:w-96 sm:border-l sm:shadow-2xl" : "hidden"} flex-col border-line bg-panel lg:static lg:z-auto lg:flex lg:w-80 lg:shrink-0 lg:border-l lg:shadow-none`}
+          className={`${panel === "info" ? "fixed inset-0 z-40 flex sm:left-auto sm:w-96 sm:border-l sm:shadow-2xl" : "hidden"} flex-col border-line bg-panel`}
         >
           <DetailPanel />
         </aside>
         {panel === "info" && (
           <div
-            className="fixed inset-0 z-30 hidden bg-black/50 sm:block lg:hidden"
+            className="fixed inset-0 z-30 hidden bg-black/50 sm:block"
             onClick={() => useRoom.setState({ panel: "chat" })}
           />
         )}

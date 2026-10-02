@@ -22,7 +22,7 @@ export function ChatPanel() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
         <div className="text-4xl opacity-60">🕯️</div>
-        <p className="text-sm text-sub">왼쪽에서 안건을 고르거나 새 안건을 만들어 보세요.</p>
+        <p className="text-sm text-sub">마인드맵에서 안건을 누르면 여기서 대화할 수 있어요.</p>
         <p className="text-xs text-muted">안건마다 대화가 따로 쌓이고, 결론이 남아요.</p>
       </div>
     );
@@ -51,7 +51,7 @@ function AgendaChat({ agenda }: { agenda: Agenda }) {
     <>
       <header className="flex items-center gap-1.5 border-b border-line px-2 py-2.5 md:px-4">
         <IconButton
-          label="안건 목록"
+          label="마인드맵으로"
           className="md:hidden"
           onClick={() => useRoom.setState({ panel: "list" })}
         >
@@ -70,7 +70,6 @@ function AgendaChat({ agenda }: { agenda: Agenda }) {
         </div>
         <IconButton
           label="안건 정보"
-          className="lg:hidden"
           onClick={() => useRoom.setState({ panel: "info" })}
         >
           <Icon name="info" className="size-5" />

@@ -16,6 +16,9 @@
 3. **SQL Editor** 에서 [`supabase/migrations/`](./supabase/migrations/) 의 파일을 **이름 순서대로** 하나씩 붙여넣고 실행한다.
    - `20261002000000_init.sql`: 테이블, RLS, RPC 함수, 트리거, Realtime 설정
    - `20261002020000_agenda_stages.sql`: 안건 상태 확장 (제작 중 / 스튜디오 반영됨 / 테스트 완료)
+   - `20261002030000_agenda_tags_assignee.sql`: 안건 태그·담당자 (현재 화면에서는 쓰지 않음. 컬럼과 데이터만 남겨 둠)
+   - `20261002040000_agenda_tree.sql`: 안건 부모-자식 관계 (마인드맵)
+   > 새 마이그레이션이 생기면 **SQL 을 먼저 실행한 뒤** 코드를 push(배포)한다.
 4. 초대 코드를 등록한다.
    ```bash
    node scripts/generate-invite-code.mjs
