@@ -4,6 +4,7 @@ import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/
 import { TYPING_TIMEOUT_MS } from "./constants";
 import {
   applyAgendaChange,
+  applyGameChange,
   applyMessageInsert,
   applyMessageUpdate,
   fetchMembers,
@@ -11,6 +12,7 @@ import {
 } from "./actions";
 import { useRoom, type PresenceInfo } from "./store";
 import { getSupabase } from "./supabase";
+import type { OmokGame } from "./omok";
 import type { Agenda, Message } from "./types";
 
 interface PresenceMeta {
@@ -75,7 +77,7 @@ let previousTeardown: Promise<unknown> = Promise.resolve();
 
 /**
  * Realtime 연결:
- *  - room:db   → Postgres Changes (agendas / messages / members)
+ *  - room:db   → Postgres Changes (agendas / messages / members / omok_games)
  *  - room:live → Presence(접속·보고 있는 안건) + Broadcast(입력 중)
  * 둘 다 private 채널이라 멤버만 구독할 수 있다.
  */
@@ -127,6 +129,13 @@ function startRealtime(userId: string) {
     .on("postgres_changes", { event: "*", schema: "public", table: "members" }, () => {
       void fetchMembers();
     })
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "omok_games" },
+      (p: RealtimePostgresChangesPayload<OmokGame>) => {
+        if (p.eventType !== "DELETE") applyGameChange(p.new as OmokGame);
+      },
+    )
     .subscribe((status) => {
       const wasReady = dbReady;
       dbReady = status === "SUBSCRIBED";

@@ -5,6 +5,7 @@ import { useShallow } from "zustand/react/shallow";
 import { loadOlder, loadUntil, sendMessage } from "@/lib/actions";
 import { MESSAGE_MAX, memberColor, showsConclusion } from "@/lib/constants";
 import { dayKey, formatDate, formatTime, toMs } from "@/lib/format";
+import { isOmokMessage } from "@/lib/omok";
 import { sendTyping, sendTypingStop } from "@/lib/realtime";
 import { showToast, useRoom } from "@/lib/store";
 import type { Agenda, ChatMessage, Message } from "@/lib/types";
@@ -14,6 +15,7 @@ import { isComposingEnter, MessageItem } from "./MessageItem";
 import { StatusBadge } from "./StatusBadge";
 
 const GROUP_GAP_MS = 5 * 60 * 1000;
+const preview = (m: Message) => (isOmokMessage(m.content) ? "🎮 오목 대국" : m.content);
 const drafts = new Map<string, string>();
 
 export function ChatPanel() {
@@ -109,7 +111,7 @@ function PinnedBar({ pinned, onJump }: { pinned: Message[]; onJump: (m: Message)
       >
         <span className="shrink-0">📌</span>
         <span className="shrink-0 font-medium text-sub">고정된 메시지 {pinned.length}개</span>
-        {!open && <span className="min-w-0 flex-1 truncate text-muted">{latest.content}</span>}
+        {!open && <span className="min-w-0 flex-1 truncate text-muted">{preview(latest)}</span>}
         <Icon
           name="chevron"
           className={`ml-auto size-4 shrink-0 text-muted transition-transform ${open ? "rotate-180" : ""}`}
@@ -130,7 +132,7 @@ function PinnedBar({ pinned, onJump }: { pinned: Message[]; onJump: (m: Message)
                 <span className="text-[11px] text-muted">
                   {formatDate(m.created_at)} {formatTime(m.created_at)}
                 </span>
-                <p className="line-clamp-2 break-words whitespace-pre-wrap text-sub">{m.content}</p>
+                <p className="line-clamp-2 break-words whitespace-pre-wrap text-sub">{preview(m)}</p>
               </button>
             </li>
           ))}

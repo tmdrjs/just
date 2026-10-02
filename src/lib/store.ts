@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import type { OmokGame } from "./omok";
 import type { Agenda, AgendaStatus, ChatMessage, Member, Message } from "./types";
 
 export interface Thread {
@@ -48,6 +49,8 @@ export interface RoomState {
   agendas: Record<string, Agenda>;
   agendasLoaded: boolean;
   threads: Record<string, Thread>;
+  /** 오목 대국 (메시지 id 기준) */
+  games: Record<string, OmokGame>;
   unread: Record<string, number>;
   selectedId: string | null;
   presence: Record<string, PresenceInfo>;
@@ -68,6 +71,7 @@ export const initialRoomState = (userId: string): RoomState => ({
   agendas: {},
   agendasLoaded: false,
   threads: {},
+  games: {},
   unread: {},
   selectedId: null,
   presence: {},

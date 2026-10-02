@@ -4,9 +4,11 @@ import { Fragment, memo, useLayoutEffect, useRef, useState, type KeyboardEvent }
 import { discardMessage, editMessage, retryMessage, setPinned } from "@/lib/actions";
 import { MESSAGE_MAX, memberColor } from "@/lib/constants";
 import { formatTime } from "@/lib/format";
+import { isOmokMessage } from "@/lib/omok";
 import { openModal } from "@/lib/store";
 import type { ChatMessage } from "@/lib/types";
 import { Icon } from "../ui/Icon";
+import { OmokBoard } from "./OmokBoard";
 
 const URL_RE = /(https?:\/\/[^\s<]+[^\s<.,:;"')\]!?])/g;
 
@@ -61,6 +63,8 @@ export const MessageItem = memo(function MessageItem({
   const deleted = Boolean(m.deleted_at);
   const color = memberColor(senderLeft ? null : slot);
   const canAct = !deleted && !m.localStatus;
+  // "!오목" 메시지는 오목판으로 보여 주고, 글 수정은 막는다 (판이 사라지지 않게)
+  const isGame = !deleted && isOmokMessage(m.content);
 
   return (
     <div
@@ -120,6 +124,8 @@ export const MessageItem = memo(function MessageItem({
               if (content !== m.content) await editMessage(m.id, content);
             }}
           />
+        ) : isGame ? (
+          <OmokBoard messageId={m.id} pending={Boolean(m.localStatus)} />
         ) : (
           <div className="text-[15px] leading-relaxed break-words whitespace-pre-wrap text-fg/95">
             {deleted ? (
@@ -172,15 +178,17 @@ export const MessageItem = memo(function MessageItem({
           </ToolButton>
           {isMine && (
             <>
-              <ToolButton
-                label="수정"
-                onClick={() => {
-                  onActivate(null);
-                  setEditing(true);
-                }}
-              >
-                <Icon name="edit" className="size-4" />
-              </ToolButton>
+              {!isGame && (
+                <ToolButton
+                  label="수정"
+                  onClick={() => {
+                    onActivate(null);
+                    setEditing(true);
+                  }}
+                >
+                  <Icon name="edit" className="size-4" />
+                </ToolButton>
+              )}
               <ToolButton
                 label="삭제"
                 onClick={() => {

@@ -1,6 +1,7 @@
 "use client";
 
 import { PAGE_SIZE } from "./constants";
+import { canPlay, OMOK_ERRORS, type OmokGame } from "./omok";
 import { toMs } from "./format";
 import { emptyThread, showToast, useRoom, type Thread } from "./store";
 import { getSupabase } from "./supabase";
@@ -155,6 +156,7 @@ export async function loadThread(agendaId: string) {
       .order("created_at", { ascending: false })
       .limit(PAGE_SIZE),
     fetchPinned(agendaId),
+    fetchGames(agendaId),
   ]);
   if (latest.error) {
     updateThread(agendaId, (t) => ({ ...t, loading: false }));
@@ -243,6 +245,7 @@ export async function resync() {
     return;
   }
   // 이미 불러온 구간 전체를 다시 받아 수정/삭제/핀 변경까지 반영
+  void fetchGames(selectedId);
   const [{ data, error }, pinned] = await Promise.all([
     sb()
       .from("messages")
@@ -505,6 +508,62 @@ export async function deleteAgenda(id: string) {
   set({ agendas, selectedId: get().selectedId === id ? null : get().selectedId, panel: "list" });
   return true;
 }
+
+// ---------------------------------------------------------------------
+// 오목
+// ---------------------------------------------------------------------
+
+function setGames(rows: OmokGame[]) {
+  if (!rows.length) return;
+  const games = { ...get().games };
+  for (const g of rows) games[g.message_id] = g;
+  set({ games });
+}
+
+export async function fetchGames(agendaId: string) {
+  const { data } = await sb().from("omok_games").select("*").eq("agenda_id", agendaId);
+  setGames((data as OmokGame[] | null) ?? []);
+}
+
+export async function fetchGame(messageId: string) {
+  const { data } = await sb().from("omok_games").select("*").eq("message_id", messageId).maybeSingle();
+  if (data) setGames([data as OmokGame]);
+}
+
+/** Realtime 으로 받은 대국 변경. 내 차례가 됐는데 그 채팅을 안 보고 있으면 알려 준다 */
+export function applyGameChange(row: OmokGame) {
+  const prev = get().games[row.message_id];
+  setGames([row]);
+  if (!prev || row.moves.length <= prev.moves.length) return;
+  const { userId, agendas } = get();
+  if (isViewing(row.agenda_id)) return;
+  const where = agendas[row.agenda_id]?.title ?? "";
+  if (row.status === "playing" && canPlay(row, userId) && (row.black_id === userId || row.white_id === userId)) {
+    showToast(`🎮 오목: 내 차례예요 · ‘${where}’`);
+  } else if (row.status === "finished" && (row.black_id === userId || row.white_id === userId)) {
+    showToast(`🎮 오목 끝: ${row.winner === "b" ? row.black_nickname : row.white_nickname} 승리 · ‘${where}’`);
+  }
+}
+
+async function omokRpc(fn: "omok_play" | "omok_resign", args: Record<string, unknown>) {
+  const { data, error } = await sb().rpc(fn, args);
+  const result = data as ({ ok: true; game: OmokGame } | { ok: false; error: string }) | null;
+  if (error || !result) {
+    showToast("오목 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.");
+    return false;
+  }
+  if (!result.ok) {
+    showToast(OMOK_ERRORS[result.error] ?? "둘 수 없는 자리예요.");
+    return false;
+  }
+  setGames([result.game]);
+  return true;
+}
+
+export const playOmok = (messageId: string, cell: number) =>
+  omokRpc("omok_play", { p_message_id: messageId, p_cell: cell });
+
+export const resignOmok = (messageId: string) => omokRpc("omok_resign", { p_message_id: messageId });
 
 // ---------------------------------------------------------------------
 // 멤버
