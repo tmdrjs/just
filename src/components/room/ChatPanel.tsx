@@ -6,6 +6,7 @@ import { loadOlder, loadUntil, sendMessage } from "@/lib/actions";
 import { MESSAGE_MAX, memberColor, showsConclusion } from "@/lib/constants";
 import { dayKey, formatDate, formatTime, toMs } from "@/lib/format";
 import { isOmokMessage } from "@/lib/omok";
+import { isYachtMessage } from "@/lib/yacht";
 import { sendTyping, sendTypingStop } from "@/lib/realtime";
 import { showToast, useRoom } from "@/lib/store";
 import type { Agenda, ChatMessage, Message } from "@/lib/types";
@@ -15,7 +16,8 @@ import { isComposingEnter, MessageItem } from "./MessageItem";
 import { StatusBadge } from "./StatusBadge";
 
 const GROUP_GAP_MS = 5 * 60 * 1000;
-const preview = (m: Message) => (isOmokMessage(m.content) ? "🎮 오목 대국" : m.content);
+const preview = (m: Message) =>
+  isOmokMessage(m.content) ? "🎮 오목 대국" : isYachtMessage(m.content) ? "🎲 야추 게임" : m.content;
 const drafts = new Map<string, string>();
 
 export function ChatPanel() {

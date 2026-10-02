@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import type { OmokGame } from "./omok";
+import type { YachtGame } from "./yacht";
 import type { Agenda, AgendaStatus, ChatMessage, Member, Message } from "./types";
 
 export interface Thread {
@@ -51,6 +52,8 @@ export interface RoomState {
   threads: Record<string, Thread>;
   /** 오목 대국 (메시지 id 기준) */
   games: Record<string, OmokGame>;
+  /** 야추 게임 (메시지 id 기준) */
+  yachts: Record<string, YachtGame>;
   unread: Record<string, number>;
   selectedId: string | null;
   presence: Record<string, PresenceInfo>;
@@ -72,6 +75,7 @@ export const initialRoomState = (userId: string): RoomState => ({
   agendasLoaded: false,
   threads: {},
   games: {},
+  yachts: {},
   unread: {},
   selectedId: null,
   presence: {},

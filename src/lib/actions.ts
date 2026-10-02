@@ -2,6 +2,7 @@
 
 import { PAGE_SIZE } from "./constants";
 import { canPlay, OMOK_ERRORS, type OmokGame } from "./omok";
+import { isMyTurn, YACHT_ERRORS, type YachtCategory, type YachtGame } from "./yacht";
 import { toMs } from "./format";
 import { emptyThread, showToast, useRoom, type Thread } from "./store";
 import { getSupabase } from "./supabase";
@@ -521,8 +522,12 @@ function setGames(rows: OmokGame[]) {
 }
 
 export async function fetchGames(agendaId: string) {
-  const { data } = await sb().from("omok_games").select("*").eq("agenda_id", agendaId);
-  setGames((data as OmokGame[] | null) ?? []);
+  const [omok, yacht] = await Promise.all([
+    sb().from("omok_games").select("*").eq("agenda_id", agendaId),
+    sb().from("yacht_games").select("*").eq("agenda_id", agendaId),
+  ]);
+  setGames((omok.data as OmokGame[] | null) ?? []);
+  setYachts((yacht.data as YachtGame[] | null) ?? []);
 }
 
 export async function fetchGame(messageId: string) {
@@ -564,6 +569,61 @@ export const playOmok = (messageId: string, cell: number) =>
   omokRpc("omok_play", { p_message_id: messageId, p_cell: cell });
 
 export const resignOmok = (messageId: string) => omokRpc("omok_resign", { p_message_id: messageId });
+
+// ---------------------------------------------------------------------
+// 야추
+// ---------------------------------------------------------------------
+
+function setYachts(rows: YachtGame[]) {
+  if (!rows.length) return;
+  const yachts = { ...get().yachts };
+  for (const g of rows) yachts[g.message_id] = g;
+  set({ yachts });
+}
+
+export async function fetchYacht(messageId: string) {
+  const { data } = await sb().from("yacht_games").select("*").eq("message_id", messageId).maybeSingle();
+  if (data) setYachts([data as YachtGame]);
+}
+
+/** Realtime 으로 받은 야추 변경. 내 차례가 됐는데 그 채팅을 안 보고 있으면 알려 준다 */
+export function applyYachtChange(row: YachtGame) {
+  const prev = get().yachts[row.message_id];
+  setYachts([row]);
+  const { userId, agendas } = get();
+  if (!prev || isViewing(row.agenda_id)) return;
+  const where = agendas[row.agenda_id]?.title ?? "";
+  const becameMyTurn = isMyTurn(row, userId) && !(isMyTurn(prev, userId) && prev.round === row.round);
+  if (becameMyTurn) showToast(`🎲 야추: 내 차례예요 · ‘${where}’`);
+  else if (prev.status === "lobby" && row.status === "playing" && row.player_count > 1) {
+    showToast(`🎲 야추가 시작됐어요 · ‘${where}’`);
+  }
+}
+
+type YachtRpc = "yacht_join" | "yacht_start" | "yacht_roll" | "yacht_hold" | "yacht_score" | "yacht_end";
+
+async function yachtRpc(fn: YachtRpc, args: Record<string, unknown>) {
+  const { data, error } = await sb().rpc(fn, args);
+  const result = data as ({ ok: true; game: YachtGame } | { ok: false; error: string }) | null;
+  if (error || !result) {
+    showToast("야추 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.");
+    return false;
+  }
+  if (!result.ok) {
+    showToast(YACHT_ERRORS[result.error] ?? "지금은 할 수 없어요.");
+    return false;
+  }
+  setYachts([result.game]);
+  return true;
+}
+
+export const yachtJoin = (id: string) => yachtRpc("yacht_join", { p_message_id: id });
+export const yachtStart = (id: string) => yachtRpc("yacht_start", { p_message_id: id });
+export const yachtRoll = (id: string) => yachtRpc("yacht_roll", { p_message_id: id });
+export const yachtHold = (id: string, index: number) => yachtRpc("yacht_hold", { p_message_id: id, p_index: index });
+export const yachtScore = (id: string, category: YachtCategory) =>
+  yachtRpc("yacht_score", { p_message_id: id, p_category: category });
+export const yachtEnd = (id: string) => yachtRpc("yacht_end", { p_message_id: id });
 
 // ---------------------------------------------------------------------
 // 멤버
