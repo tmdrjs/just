@@ -96,7 +96,7 @@ export const MessageItem = memo(function MessageItem({
             {m.sender_nickname.slice(0, 1)}
           </span>
         ) : (
-          <time className="invisible pt-1 text-[10px] text-muted tabular-nums group-hover:visible">
+          <time className="invisible pt-1 text-[10px] whitespace-nowrap text-muted tabular-nums group-hover:visible">
             {formatTime(m.created_at)}
           </time>
         )}
