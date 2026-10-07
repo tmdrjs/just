@@ -10,11 +10,13 @@
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
+    "@react-three/fiber": "^9.8.1",
     "@supabase/supabase-js": "^2.117.2",
     "@xyflow/react": "^12.12.0",
     "next": "16.3.8",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "three": "^0.186.1",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
@@ -22,6 +24,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.186.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
     "tailwindcss": "^4",

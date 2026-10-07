@@ -64,6 +64,8 @@ export interface RoomState {
   panel: MobilePanel;
   filters: AgendaFilters;
   modal: ModalState;
+  /** 3D 공포게임 화면이 열려 있음 */
+  horror: boolean;
   toast: { id: number; text: string } | null;
 }
 
@@ -85,6 +87,7 @@ export const initialRoomState = (userId: string): RoomState => ({
   panel: "list",
   filters: defaultFilters(),
   modal: null,
+  horror: false,
   toast: null,
 });
 

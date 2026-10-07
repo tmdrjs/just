@@ -15,6 +15,10 @@ const paths = {
   check: "M5 12l5 5 9-10",
   wifiOff: "M2 2l20 20M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5.2-2.8M19 13a10 10 0 0 0-2.4-1.7M2 8.8a15 15 0 0 1 4.2-2.6M22 8.8A15 15 0 0 0 10.7 5M12 20h.01",
   door: "M14 3H6v18h8M10 12h11M18 9l3 3-3 3",
+  ghost: "M5 21V10a7 7 0 0 1 14 0v11l-2.3-1.6L14.3 21 12 19.4 9.7 21l-2.4-1.6L5 21zM9.5 10h.01M14.5 10h.01",
+  volume: "M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12",
+  volumeOff: "M4 9v6h4l5 4V5L8 9H4zM17 9l5 6M22 9l-5 6",
+  pause: "M8 5v14M16 5v14",
 } as const;
 
 export type IconName = keyof typeof paths;

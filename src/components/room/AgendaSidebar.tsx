@@ -5,7 +5,7 @@ import { useState } from "react";
 import { memberColor } from "@/lib/constants";
 import { isFiltering } from "@/lib/filters";
 import { openModal, useRoom } from "@/lib/store";
-import { Spinner } from "../ui/Button";
+import { IconButton, Spinner } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { AgendaFiltersBar } from "./AgendaFiltersBar";
 
@@ -30,6 +30,9 @@ export function AgendaSidebar() {
       <header className="flex items-center gap-2 border-b border-line px-4 py-3">
         <span className="text-lg">🕯️</span>
         <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold">공포게임 기획실</h1>
+        <IconButton label="3D 공포게임 하기" onClick={() => useRoom.setState({ horror: true })}>
+          <Icon name="ghost" className="size-[18px]" />
+        </IconButton>
         <button
           type="button"
           onClick={() => openModal({ kind: "settings" })}

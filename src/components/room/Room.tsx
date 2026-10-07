@@ -9,6 +9,7 @@ import { Icon } from "../ui/Icon";
 import { AgendaSidebar } from "./AgendaSidebar";
 import { ChatPanel } from "./ChatPanel";
 import { DetailPanel } from "./DetailPanel";
+import { HorrorLayer } from "./HorrorLayer";
 import { Modals } from "./Modals";
 import { CHAT_MIN_PX, MAP_MIN_PX, SplitDivider, useSplitRatio } from "./SplitDivider";
 
@@ -110,6 +111,7 @@ export function Room({ userId, onExit }: { userId: string; onExit: (notice?: str
           />
         )}
       </div>
+      <HorrorLayer />
       <Modals onLeft={() => onExit()} />
       {toast && (
         <div
