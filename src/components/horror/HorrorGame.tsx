@@ -14,15 +14,8 @@ import {
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { HorrorAudio } from "./audio";
-import {
-  createHorrorState,
-  EYE_HEIGHT,
-  resetRun,
-  START_Z,
-  type CaughtReason,
-  type HorrorState,
-  type Phase,
-} from "./state";
+import { EYE_HEIGHT, START_Z } from "./layout";
+import { createHorrorState, resetRun, type CaughtReason, type HorrorState, type Phase } from "./state";
 import { World, type WorldEvents } from "./World";
 
 const MOUSE_SENSITIVITY = 0.0022;
@@ -55,6 +48,8 @@ export function HorrorGame({ onExit }: { onExit: () => void }) {
   const [phase, setPhaseState] = useState<Phase>("intro");
   const [run, setRun] = useState(0);
   const [message, setMessage] = useState<{ id: number; text: string } | null>(null);
+  /** 화면 가운데의 상호작용 안내 (예: "문 열기") */
+  const [prompt, setPrompt] = useState<string | null>(null);
   const [scareId, setScareId] = useState(0);
   const [caught, setCaught] = useState<CaughtReason | null>(null);
   const [muted, setMuted] = useState(false);
@@ -122,6 +117,7 @@ export function HorrorGame({ onExit }: { onExit: () => void }) {
     resetRun(gameRef.current);
     setCaught(null);
     setMessage(null);
+    setPrompt(null);
     setRun((r) => r + 1);
     start();
   };
@@ -129,6 +125,7 @@ export function HorrorGame({ onExit }: { onExit: () => void }) {
   const events = useMemo<WorldEvents>(
     () => ({
       onMessage: say,
+      onFocus: setPrompt,
       onScare: () => setScareId((n) => n + 1),
       onCaught: (reason) => {
         setCaught(reason);
@@ -148,6 +145,10 @@ export function HorrorGame({ onExit }: { onExit: () => void }) {
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === "KeyM") return toggleMute();
+      if (e.code === "KeyE") {
+        if (phaseRef.current === "playing" && !e.repeat) s.interact = true;
+        return;
+      }
       if (e.code === "Escape") {
         // 마우스가 잠겨 있으면 브라우저가 Esc 로 잠금을 풀고 pointerlockchange 로 일시정지된다
         if (phaseRef.current === "playing") pause();
@@ -247,6 +248,12 @@ export function HorrorGame({ onExit }: { onExit: () => void }) {
           className="pointer-events-none absolute top-1/2 left-1/2 size-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/40"
         />
       )}
+      {phase === "playing" && prompt && !touch && (
+        <p className="pointer-events-none absolute top-1/2 left-1/2 mt-8 flex -translate-x-1/2 items-center gap-2 text-sm text-fg/90 [text-shadow:0_0_8px_#000]">
+          <kbd className="rounded border border-white/40 bg-black/40 px-1.5 py-0.5 font-sans text-xs">E</kbd>
+          {prompt}
+        </p>
+      )}
       {message && (
         <p
           key={message.id}
@@ -273,10 +280,22 @@ export function HorrorGame({ onExit }: { onExit: () => void }) {
 
       {phase === "playing" && !touch && (
         <p className="pointer-events-none absolute bottom-3 left-4 text-[11px] text-muted/70">
-          Esc 일시정지 · Shift 달리기 · M 소리
+          E 상호작용 · Esc 일시정지 · Shift 달리기 · M 소리
         </p>
       )}
       {phase === "playing" && touch && <TouchWalk gameRef={gameRef} />}
+      {phase === "playing" && touch && prompt && (
+        <button
+          type="button"
+          className="absolute right-4 bottom-[max(1.5rem,env(safe-area-inset-bottom))] rounded-full bg-white/15 px-5 py-4 text-sm font-medium text-fg active:bg-white/30"
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            gameRef.current.interact = true;
+          }}
+        >
+          {prompt}
+        </button>
+      )}
 
       {phase === "intro" && (
         <Screen>
@@ -287,12 +306,13 @@ export function HorrorGame({ onExit }: { onExit: () => void }) {
             {touch ? (
               <>
                 <li>화면을 끌어서 둘러보기</li>
-                <li>아래 버튼을 누르고 있으면 걷기</li>
+                <li>아래 버튼을 누르고 있으면 걷기 · 문 앞에서 오른쪽 버튼</li>
               </>
             ) : (
               <>
                 <li>WASD · 방향키 이동 · Shift 달리기</li>
-                <li>마우스로 둘러보기 · Esc 일시정지 · M 소리</li>
+                <li>마우스로 둘러보기 · E 문 열기·닫기</li>
+                <li>Esc 일시정지 · M 소리</li>
               </>
             )}
           </ul>

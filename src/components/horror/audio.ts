@@ -142,6 +142,47 @@ export class HorrorAudio {
     }
   }
 
+  /** 녹슨 경첩이 끼익 하는 소리. 빠른 톱니파 펄스를 좁은 대역으로 걸러 삐걱임을 만든다 */
+  creak(length = 0.9) {
+    const { ctx } = this;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(34 + Math.random() * 8, t);
+    osc.frequency.linearRampToValueAtTime(68, t + length * 0.4);
+    osc.frequency.linearRampToValueAtTime(42, t + length);
+    const band = ctx.createBiquadFilter();
+    band.type = "bandpass";
+    band.Q.value = 7;
+    band.frequency.setValueAtTime(950, t);
+    band.frequency.linearRampToValueAtTime(1500, t + length * 0.6);
+    const env = this.envelope(0.22, 0.06, length, t);
+    osc.connect(band).connect(env).connect(this.master);
+    osc.start(t);
+    osc.stop(t + length + 0.1);
+  }
+
+  /** 문이 닫히며 문틀에 부딪히는 소리 */
+  thud() {
+    const { ctx } = this;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.frequency.setValueAtTime(110, t);
+    osc.frequency.exponentialRampToValueAtTime(45, t + 0.18);
+    const env = this.envelope(0.3, 0.003, 0.22, t);
+    osc.connect(env).connect(this.master);
+    osc.start(t);
+    osc.stop(t + 0.3);
+
+    const src = this.noiseSource();
+    const low = ctx.createBiquadFilter();
+    low.type = "lowpass";
+    low.frequency.value = 1400;
+    const nEnv = this.envelope(0.22, 0.002, 0.06, t);
+    src.connect(low).connect(nEnv).connect(this.master);
+    src.start(t, Math.random(), 0.1);
+  }
+
   /** 무언가를 봤을 때: 낮게 차오르는 불협화음 */
   stinger() {
     const { ctx } = this;
