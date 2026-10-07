@@ -8,17 +8,20 @@ import {
   blocksDoor,
   canStand,
   END_DOOR,
+  ESCAPE_Z,
   EYE_HEIGHT,
   HALF_WIDTH,
   HEIGHT,
   inCorridor,
+  ITEM_NAME,
   LAMPS,
   REACH,
   ROOM_DOORS,
   START_Z,
+  type ItemId,
 } from "./layout";
 import { Level } from "./Level";
-import type { CaughtReason, HorrorState } from "./state";
+import type { CaughtReason, HorrorState, Interactable } from "./state";
 
 const WALK_SPEED = 2.2;
 const RUN_SPEED = 4.2;
@@ -37,8 +40,11 @@ export interface WorldEvents {
   onMessage: (text: string, ms?: number) => void;
   /** 화면 가운데에 상호작용할 수 있는 것이 들어오거나 나감 (예: "문 열기") */
   onFocus: (label: string | null) => void;
+  /** 가진 물건이 바뀜 */
+  onItems: (items: ItemId[]) => void;
   onScare: () => void;
   onCaught: (reason: CaughtReason) => void;
+  onEscape: () => void;
 }
 
 /** 3D 장면 전체. key 를 바꿔 다시 마운트하면 판이 처음부터 시작된다 */
@@ -124,11 +130,17 @@ function Flashlight({ gameRef }: { gameRef: RefObject<HorrorState> }) {
     const l = light.current;
     const t = target.current;
     if (!l || !t) return;
+    const s = gameRef.current;
     const dir = camera.getWorldDirection(scratchDir);
     l.position.copy(camera.position).add(scratchOffset.set(0.18, -0.2, 0).applyQuaternion(camera.quaternion));
     aim.current.lerp(dir.multiplyScalar(6).add(camera.position), Math.min(1, dt * 14));
     t.position.copy(aim.current);
-    l.intensity = FLASHLIGHT_INTENSITY * gameRef.current.flashlight;
+    let k = s.flashlight;
+    if (s.flashFlicker > 0) {
+      s.flashFlicker -= dt;
+      if (Math.random() < 0.35) k *= Math.random() * 0.2;
+    }
+    l.intensity = FLASHLIGHT_INTENSITY * k;
   });
 
   return (
@@ -187,9 +199,11 @@ function Player({ gameRef }: { gameRef: RefObject<HorrorState> }) {
       // 막히면 벽을 따라 미끄러진다 (x 만, z 만 차례로 시도)
       let x = p.x + dx;
       let z = p.z + dz;
-      if (!canStand(s.doorOpen, x, z)) {
-        if (canStand(s.doorOpen, x, p.z)) z = p.z;
-        else if (canStand(s.doorOpen, p.x, z)) x = p.x;
+      // 비상구는 문짝이 충분히 열려야 지나갈 수 있다
+      const exitOpen = s.exitAngle > 1;
+      if (!canStand(s.doorOpen, exitOpen, x, z)) {
+        if (canStand(s.doorOpen, exitOpen, x, p.z)) z = p.z;
+        else if (canStand(s.doorOpen, exitOpen, p.x, z)) x = p.x;
         else {
           x = p.x;
           z = p.z;
@@ -225,21 +239,41 @@ function Player({ gameRef }: { gameRef: RefObject<HorrorState> }) {
 
 // ---------------------------------------------------------------- 상호작용 (E)
 
-/** 화면 가운데로 광선을 쏴서 손이 닿는 문을 찾고, E 를 누르면 열고 닫는다 */
+/** 지금 이것에 E 를 누르면 무엇을 하는지. null 이면 할 수 있는 게 없다 */
+function actionLabel(s: HorrorState, t: Interactable): string | null {
+  if (t.type === "item") return s.items.has(t.item) ? null : `${ITEM_NAME[t.item]} 줍기`;
+  if (t.door === END_DOOR) {
+    if (s.exitUnlocked) return null;
+    return s.items.has("exitKey") ? "열쇠로 열기" : "문 열기";
+  }
+  const key = ROOM_DOORS[t.door].key;
+  if (key && !s.unlocked[t.door]) return s.items.has(key) ? "열쇠로 열기" : "문 열기";
+  return s.doorOpen[t.door] ? "문 닫기" : "문 열기";
+}
+
+/** 화면 가운데로 광선을 쏴서 손이 닿는 문·물건을 찾고, E 를 누르면 쓴다 */
 function Interaction({ gameRef, events }: { gameRef: RefObject<HorrorState>; events: WorldEvents }) {
   const shown = useRef<string | null>(null);
+  const triedExit = useRef(false);
 
   useFrame(({ camera }) => {
     const s = gameRef.current;
-    let id: number | null = null;
+    let target: Interactable | null = null;
+    let label: string | null = null;
     if (s.playing) {
       raycaster.setFromCamera(SCREEN_CENTER, camera);
       raycaster.far = REACH;
-      const hit = raycaster.intersectObjects(s.targets, false)[0];
-      if (hit) id = hit.object.userData.door as number;
+      // 이미 주운 열쇠처럼 할 게 없는 것은 건너뛰고 가장 가까운 것
+      for (const hit of raycaster.intersectObjects(s.targets, false)) {
+        const t = hit.object.userData.interact as Interactable;
+        const l = actionLabel(s, t);
+        if (l) {
+          target = t;
+          label = l;
+          break;
+        }
+      }
     }
-
-    const label = id === null ? null : id !== END_DOOR && s.doorOpen[id] ? "문 닫기" : "문 열기";
     if (label !== shown.current) {
       shown.current = label;
       events.onFocus(label);
@@ -247,17 +281,58 @@ function Interaction({ gameRef, events }: { gameRef: RefObject<HorrorState>; eve
 
     if (!s.interact) return;
     s.interact = false;
-    if (id === null) return;
+    if (!target) return;
+    const { x, z } = camera.position;
 
-    if (id === END_DOOR || ROOM_DOORS[id].locked) {
-      s.audio?.rattle();
-      events.onMessage("잠겨 있다.", 2000);
-      if (id === END_DOOR) s.endDoorTried = true;
+    if (target.type === "item") {
+      s.items.add(target.item);
+      events.onItems([...s.items]);
+      s.audio?.pickup();
+      events.onMessage(`${ITEM_NAME[target.item]}를 주웠다.`, 2500);
+      if (target.item === "exitKey") {
+        // 줍는 순간 등 뒤에서 방문이 쾅 닫힌다
+        const room = ROOM_DOORS.findIndex((d) => d.key === "roomKey");
+        if (s.doorOpen[room] && !blocksDoor(room, x, z)) {
+          s.doorOpen[room] = false;
+          s.slamDoor = room;
+        }
+        s.flashFlicker = 1.6;
+        s.audio?.whisper(0);
+      }
+      return;
+    }
+
+    const id = target.door;
+    if (id === END_DOOR) {
+      if (s.items.has("exitKey")) {
+        // 잠금만 풀고, 문이 열리는 건 연출(Director)이 맡는다
+        s.exitUnlocked = true;
+        s.audio?.unlock();
+        events.onMessage("열쇠가 돌아간다…", 2500);
+      } else {
+        s.audio?.rattle();
+        events.onMessage(triedExit.current ? "잠겨 있다." : "잠겨 있다. 열쇠가 필요하다…", 2500);
+        triedExit.current = true;
+      }
+      return;
+    }
+    const key = ROOM_DOORS[id].key;
+    if (key && !s.unlocked[id]) {
+      if (s.items.has(key)) {
+        s.unlocked[id] = true;
+        s.doorOpen[id] = true;
+        s.audio?.unlock();
+        s.audio?.creak();
+        events.onMessage("열쇠가 맞는다.", 2000);
+      } else {
+        s.audio?.rattle();
+        events.onMessage("잠겨 있다.", 2000);
+      }
       return;
     }
     if (s.doorOpen[id]) {
       // 문짝이 지나갈 자리에 서 있으면 닫지 않는다
-      if (blocksDoor(id, camera.position.x, camera.position.z)) return;
+      if (blocksDoor(id, x, z)) return;
       s.doorOpen[id] = false;
       s.audio?.creak(0.5);
     } else {
@@ -276,14 +351,20 @@ type Stage =
   | "glimpse"
   | "afterGlimpse"
   | "blackout"
-  | "toDoor"
+  | "explore"
   | "door"
   | "behind"
   | "seen"
   | "scare"
   | "done";
 
-/** 플레이어 위치와 행동에 따라 이벤트를 차례로 일으킨다 */
+/** 비상구를 연 뒤의 단계들 (이 동안에는 앞 단계 이벤트가 끼어들지 않는다) */
+const ENDING_STAGES: ReadonlySet<Stage> = new Set(["door", "behind", "seen", "scare", "done"]);
+
+/**
+ * 플레이어 위치와 행동에 따라 이벤트를 차례로 일으킨다.
+ * 비상구 열쇠로 문을 열면 언제든 엔딩: 등 뒤에 엔티티가 서고, 돌아보지 않고 계단실로 나가면 탈출
+ */
 function Director({
   gameRef,
   entityRef,
@@ -315,9 +396,11 @@ function Director({
     dir.y = 0;
     dir.normalize();
     const toEntity = scratchToEntity.set(e.position.x - x, 0, e.position.z - z).normalize();
-    // 복도 끝 문을 열어 보려 했는지: 이번 프레임에만 유효
-    const triedEndDoor = s.endDoorTried;
-    s.endDoorTried = false;
+    if (s.exitUnlocked && !ENDING_STAGES.has(stage.current)) {
+      e.visible = false;
+      s.flickerLamp = null;
+      go("door", 0.9);
+    }
 
     const faceCamera = () => e.lookAt(x, e.position.y, z);
     const scare = () => {
@@ -372,19 +455,20 @@ function Director({
             timer.current = 0.45;
           } else {
             s.flickerLamp = 4;
-            go("toDoor");
+            go("explore");
           }
         }
         break;
-      case "toDoor":
-        if (triedEndDoor) go("door", 1.8);
+      case "explore":
         break;
       case "door":
         if (timer.current < 0) {
-          // 마지막 전등도 꺼지고, 등 뒤에 선다
-          s.lampOn[4] = false;
+          // 남은 전등이 모두 꺼지고, 비상구가 천천히 열리기 시작하고, 등 뒤에 선다
+          s.lampOn = s.lampOn.map(() => false);
           s.flickerLamp = null;
           s.audio?.clunk();
+          s.exitOpen = true;
+          s.audio?.creak(2.8);
           e.position.set(THREE.MathUtils.clamp(x, -HALF_WIDTH + 0.35, HALF_WIDTH - 0.35), 0, z + 1.4);
           faceCamera();
           e.visible = true;
@@ -392,10 +476,17 @@ function Director({
           // 엔티티가 있는 쪽 귀에서 속삭인다 (카메라 오른쪽 = (cos yaw, 0, -sin yaw))
           toEntity.set(e.position.x - x, 0, e.position.z - z).normalize();
           s.audio?.whisper(Math.cos(s.yaw) * toEntity.x - Math.sin(s.yaw) * toEntity.z);
-          go("behind", 9);
+          go("behind", 12);
         }
         break;
       case "behind": {
+        // 돌아보지 않고 비상구를 지나면 탈출
+        if (z < ESCAPE_Z) {
+          e.visible = false;
+          go("done");
+          events.onEscape();
+          break;
+        }
         // 등 뒤에서 아주 천천히 다가온다
         s.flashlight = Math.random() < 0.06 ? 0.15 : 1;
         if (Math.hypot(e.position.x - x, e.position.z - z) > 0.95) {

@@ -1,10 +1,12 @@
 import type { Object3D } from "three";
 import type { HorrorAudio } from "./audio";
-import { LAMPS, ROOM_DOORS } from "./layout";
+import { LAMPS, ROOM_DOORS, type ItemId } from "./layout";
 
-export type Phase = "intro" | "playing" | "paused" | "caught";
+export type Phase = "intro" | "playing" | "paused" | "caught" | "escaped";
 export type CaughtReason = "turned" | "waited";
 export type EntityPose = "idle" | "reach";
+/** targets 에 등록된 물체의 userData.interact */
+export type Interactable = { type: "door"; door: number } | { type: "item"; item: ItemId };
 
 /**
  * 매 프레임 바뀌는 값은 React 상태가 아니라 이 객체에 두고 직접 고친다 (리렌더 없이 60fps).
@@ -31,8 +33,20 @@ export interface HorrorState {
   shake: number;
   /** ROOM_DOORS 순서대로 문이 열려 있는지 */
   doorOpen: boolean[];
-  /** 복도 끝 문을 열어 보려 했음 (연출이 확인하고 지운다) */
-  endDoorTried: boolean;
+  /** ROOM_DOORS 순서대로 열쇠로 잠금을 풀었는지 */
+  unlocked: boolean[];
+  /** 이 문을 세게 닫는 중 (보통보다 빨리 닫히고 쿵) */
+  slamDoor: number | null;
+  /** 가지고 있는 물건 */
+  items: Set<ItemId>;
+  /** 비상구 잠금을 풀었음 → 연출이 엔딩을 시작한다 */
+  exitUnlocked: boolean;
+  /** 비상구가 열리는 중 (연출이 켠다) */
+  exitOpen: boolean;
+  /** 비상구 문짝의 현재 각도 (충분히 열려야 지나갈 수 있다) */
+  exitAngle: number;
+  /** 손전등이 깜빡이는 남은 시간 (초) */
+  flashFlicker: number;
   entityPose: EntityPose;
   /** E 로 상호작용할 수 있는 물체 (화면 가운데 광선이 닿는지 검사) */
   targets: Object3D[];
@@ -54,7 +68,13 @@ export function createHorrorState(): HorrorState {
     flashlight: 1,
     shake: 0,
     doorOpen: ROOM_DOORS.map(() => false),
-    endDoorTried: false,
+    unlocked: ROOM_DOORS.map(() => false),
+    slamDoor: null,
+    items: new Set(),
+    exitUnlocked: false,
+    exitOpen: false,
+    exitAngle: 0,
+    flashFlicker: 0,
     entityPose: "idle",
     targets: [],
     muted: false,
@@ -74,6 +94,12 @@ export function resetRun(s: HorrorState) {
   s.flashlight = 1;
   s.shake = 0;
   s.doorOpen = ROOM_DOORS.map(() => false);
-  s.endDoorTried = false;
+  s.unlocked = ROOM_DOORS.map(() => false);
+  s.slamDoor = null;
+  s.items.clear();
+  s.exitUnlocked = false;
+  s.exitOpen = false;
+  s.exitAngle = 0;
+  s.flashFlicker = 0;
   s.entityPose = "idle";
 }

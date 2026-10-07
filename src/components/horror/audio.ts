@@ -162,14 +162,14 @@ export class HorrorAudio {
     osc.stop(t + length + 0.1);
   }
 
-  /** 문이 닫히며 문틀에 부딪히는 소리 */
-  thud() {
+  /** 문이 닫히며 문틀에 부딪히는 소리. level 을 키우면 쾅 */
+  thud(level = 0.3) {
     const { ctx } = this;
     const t = ctx.currentTime;
     const osc = ctx.createOscillator();
     osc.frequency.setValueAtTime(110, t);
     osc.frequency.exponentialRampToValueAtTime(45, t + 0.18);
-    const env = this.envelope(0.3, 0.003, 0.22, t);
+    const env = this.envelope(level, 0.003, 0.22 + level * 0.4, t);
     osc.connect(env).connect(this.master);
     osc.start(t);
     osc.stop(t + 0.3);
@@ -178,9 +178,49 @@ export class HorrorAudio {
     const low = ctx.createBiquadFilter();
     low.type = "lowpass";
     low.frequency.value = 1400;
-    const nEnv = this.envelope(0.22, 0.002, 0.06, t);
+    const nEnv = this.envelope(level * 0.75, 0.002, 0.06, t);
     src.connect(low).connect(nEnv).connect(this.master);
     src.start(t, Math.random(), 0.1);
+  }
+
+  /** 열쇠를 집을 때 짤랑 */
+  pickup() {
+    const t = this.ctx.currentTime;
+    [2350, 3100, 2700].forEach((f, i) => {
+      const osc = this.ctx.createOscillator();
+      osc.frequency.value = f + Math.random() * 80;
+      const at = t + i * 0.06;
+      const env = this.envelope(0.07, 0.003, 0.25, at);
+      osc.connect(env).connect(this.master);
+      osc.start(at);
+      osc.stop(at + 0.3);
+    });
+  }
+
+  /** 자물쇠가 철컥 풀리는 소리 */
+  unlock() {
+    const { ctx } = this;
+    const t = ctx.currentTime;
+    for (const [at, f] of [
+      [0, 2600],
+      [0.12, 1700],
+    ] as const) {
+      const src = this.noiseSource();
+      const band = ctx.createBiquadFilter();
+      band.type = "bandpass";
+      band.frequency.value = f;
+      band.Q.value = 4;
+      const env = this.envelope(0.3, 0.002, 0.05, t + at);
+      src.connect(band).connect(env).connect(this.master);
+      src.start(t + at, Math.random(), 0.08);
+    }
+    const osc = ctx.createOscillator();
+    osc.frequency.setValueAtTime(180, t + 0.12);
+    osc.frequency.exponentialRampToValueAtTime(70, t + 0.25);
+    const env = this.envelope(0.2, 0.003, 0.15, t + 0.12);
+    osc.connect(env).connect(this.master);
+    osc.start(t + 0.12);
+    osc.stop(t + 0.35);
   }
 
   /** 무언가를 봤을 때: 낮게 차오르는 불협화음 */

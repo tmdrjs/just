@@ -25,22 +25,34 @@ export const ROOM_WIDTH = 4;
 /** E 로 상호작용할 수 있는 거리 */
 export const REACH = 2.2;
 
-/** 상호작용 대상 번호: 0 부터는 ROOM_DOORS 순서, 복도 끝 문은 END_DOOR */
+/** 문 번호: 0 부터는 ROOM_DOORS 순서, 복도 끝 비상구는 END_DOOR */
 export const END_DOOR = -1;
+/** 비상구 너머 계단실 깊이 */
+export const EXIT_DEPTH = 3.5;
+/** 플레이어가 이 z 를 넘어 계단실로 들어가면 탈출 */
+export const ESCAPE_Z = -LENGTH - 0.4;
+
+export type ItemId = "roomKey" | "exitKey";
+
+export const ITEM_NAME: Record<ItemId, string> = {
+  roomKey: "B304 열쇠",
+  exitKey: "비상구 열쇠",
+};
 
 export interface RoomDoor {
   /** -1 왼쪽 벽, 1 오른쪽 벽 */
   side: -1 | 1;
   z: number;
   label: string;
-  locked?: boolean;
+  /** 이 열쇠가 있어야 열린다 */
+  key?: ItemId;
 }
 
 export const ROOM_DOORS: readonly RoomDoor[] = [
   { side: -1, z: -8, label: "B301" },
   { side: 1, z: -14, label: "B302" },
   { side: -1, z: -20, label: "B303" },
-  { side: 1, z: -26, label: "B304", locked: true },
+  { side: 1, z: -26, label: "B304", key: "roomKey" },
   { side: -1, z: -32, label: "B305" },
   { side: 1, z: -38, label: "B306" },
 ];
@@ -159,14 +171,33 @@ export const ROOMS: readonly Room[] = (() => {
   });
 })();
 
+export interface ItemSpot {
+  id: ItemId;
+  x: number;
+  y: number;
+  z: number;
+  rotY: number;
+}
+
+/** 소품 위에 열쇠를 올려 둔다: B304 열쇠는 B303 서랍장 위, 비상구 열쇠는 B304 침대 위 */
+function itemOn(roomIndex: number, kind: PropKind, id: ItemId): ItemSpot {
+  const prop = ROOMS[roomIndex].props.find((p) => p.kind === kind)!;
+  return { id, x: prop.x, y: kind === "cabinet" ? 0.905 : 0.61, z: prop.z, rotY: prop.rotY + 0.6 };
+}
+
+export const ITEMS: readonly ItemSpot[] = [itemOn(2, "cabinet", "roomKey"), itemOn(3, "bed", "exitKey")];
+
 const CORRIDOR = rect(-HALF_WIDTH + R, HALF_WIDTH - R, -LENGTH + END_GAP, -R);
+const EXIT_DOORWAY = rect(-DOOR_WIDTH / 2 + R, DOOR_WIDTH / 2 - R, -LENGTH - R - 0.02, -LENGTH + END_GAP + 0.02);
+const EXIT_AREA = rect(-HALF_WIDTH + R, HALF_WIDTH - R, -LENGTH - EXIT_DEPTH + R, -LENGTH - R);
 
 /** 플레이어 중심이 (x, z) 에 설 수 있는지. 닫힌 문틀은 지나갈 수 없다 */
-export function canStand(doorOpen: readonly boolean[], x: number, z: number) {
+export function canStand(doorOpen: readonly boolean[], exitOpen: boolean, x: number, z: number) {
   for (const room of ROOMS) {
     if (room.obstacles.some((o) => inside(o, x, z))) return false;
   }
   if (inside(CORRIDOR, x, z)) return true;
+  if (exitOpen && (inside(EXIT_DOORWAY, x, z) || inside(EXIT_AREA, x, z))) return true;
   return ROOMS.some((r) => inside(r.walk, x, z) || (doorOpen[r.index] && inside(r.doorway, x, z)));
 }
 

@@ -19,6 +19,7 @@
   --animate-fade-in: fade-in 0.15s ease-out;
   --animate-dice: dice-roll 0.45s ease-out;
   --animate-scare: scare 0.9s ease-out forwards;
+  --animate-fade-slow: fade-slow 1.8s ease-in;
 }
 
 @keyframes flash {
@@ -129,6 +130,15 @@ body {
   }
   100% {
     opacity: 0;
+  }
+}
+
+@keyframes fade-slow {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 

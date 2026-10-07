@@ -8,21 +8,26 @@ import {
   DOOR_OPEN_ANGLE,
   DOOR_WIDTH,
   END_DOOR,
+  EXIT_DEPTH,
   HALF_WIDTH,
   HEIGHT,
+  ITEMS,
   LENGTH,
   ROOM_DEPTH,
   ROOM_DOORS,
   ROOM_WIDTH,
   ROOMS,
   seeded,
+  type ItemSpot,
   type Prop,
   type Room,
 } from "./layout";
-import type { HorrorState } from "./state";
+import type { HorrorState, Interactable } from "./state";
 import {
   ceilingTexture,
+  concreteTexture,
   doorTexture,
+  exitSignTexture,
   floorTexture,
   mattressTexture,
   plateTexture,
@@ -89,7 +94,22 @@ function corridorWalls(): WallPiece[] {
   return pieces;
 }
 
-/** 복도 + 병실 + 문. 문은 gameRef.doorOpen 을 따라 열리고 닫힌다 */
+/** 복도 끝 벽: 비상구 자리만 비운다 */
+function endWallPieces(): WallPiece[] {
+  const side = HALF_WIDTH - DOOR_WIDTH / 2;
+  const z = -LENGTH;
+  return [
+    { geo: wallPlane(side, HEIGHT), position: [-(DOOR_WIDTH / 2 + side / 2), HEIGHT / 2, z], rotY: 0 },
+    { geo: wallPlane(side, HEIGHT), position: [DOOR_WIDTH / 2 + side / 2, HEIGHT / 2, z], rotY: 0 },
+    {
+      geo: wallPlane(DOOR_WIDTH, HEIGHT - DOOR_HEIGHT, DOOR_HEIGHT),
+      position: [0, DOOR_HEIGHT + (HEIGHT - DOOR_HEIGHT) / 2, z],
+      rotY: 0,
+    },
+  ];
+}
+
+/** 복도 + 병실 + 문 + 비상계단 + 열쇠. 문은 gameRef.doorOpen 을 따라 열리고 닫힌다 */
 export function Level({ gameRef }: { gameRef: RefObject<HorrorState> }) {
   const tex = useMemo(
     () => ({
@@ -101,6 +121,9 @@ export function Level({ gameRef }: { gameRef: RefObject<HorrorState> }) {
       endDoor: doorTexture("#4a1414", true),
       mattress: mattressTexture(),
       sign: signTexture(),
+      exitSign: exitSignTexture(),
+      concrete: concreteTexture(),
+      keyTag: plateTexture("B304"),
       plates: ROOM_DOORS.map((d) => plateTexture(d.label)),
     }),
     [],
@@ -109,8 +132,11 @@ export function Level({ gameRef }: { gameRef: RefObject<HorrorState> }) {
     () => ({
       floor: tiledPlane(HALF_WIDTH * 2, LENGTH, FLOOR_TILE),
       ceiling: tiledPlane(HALF_WIDTH * 2, LENGTH, CEILING_TILE),
-      endWall: wallPlane(HALF_WIDTH * 2, HEIGHT),
-      walls: corridorWalls(),
+      startWall: wallPlane(HALF_WIDTH * 2, HEIGHT),
+      walls: [...corridorWalls(), ...endWallPieces()],
+      stairFloor: tiledPlane(HALF_WIDTH * 2, EXIT_DEPTH, CEILING_TILE),
+      stairSide: tiledPlane(EXIT_DEPTH, HEIGHT, CEILING_TILE),
+      stairBack: tiledPlane(HALF_WIDTH * 2, HEIGHT, CEILING_TILE),
       roomFloor: tiledPlane(ROOM_DEPTH, ROOM_WIDTH, FLOOR_TILE),
       roomCeiling: tiledPlane(ROOM_DEPTH, ROOM_WIDTH, CEILING_TILE),
       roomBack: wallPlane(ROOM_WIDTH, HEIGHT),
@@ -150,10 +176,7 @@ export function Level({ gameRef }: { gameRef: RefObject<HorrorState> }) {
           <meshStandardMaterial map={tex.wall} roughness={0.95} side={THREE.DoubleSide} />
         </mesh>
       ))}
-      <mesh geometry={geo.endWall} position={[0, HEIGHT / 2, -LENGTH]}>
-        <meshStandardMaterial map={tex.wall} roughness={0.95} />
-      </mesh>
-      <mesh geometry={geo.endWall} rotation-y={Math.PI} position={[0, HEIGHT / 2, 0]}>
+      <mesh geometry={geo.startWall} rotation-y={Math.PI} position={[0, HEIGHT / 2, 0]}>
         <meshStandardMaterial map={tex.wall} roughness={0.95} />
       </mesh>
 
@@ -169,11 +192,20 @@ export function Level({ gameRef }: { gameRef: RefObject<HorrorState> }) {
           rotY={(-room.door.side * Math.PI) / 2}
           map={tex.door}
           plate={tex.plates[room.index]}
-          sign={room.door.locked ? tex.sign : undefined}
+          sign={room.door.key ? tex.sign : undefined}
         />
       ))}
-      {/* 복도 끝, 잠긴 문 */}
-      <Door gameRef={gameRef} id={END_DOOR} position={[0, 0, -LENGTH + 0.03]} rotY={0} map={tex.endDoor} />
+      {/* 복도 끝 비상구: 어둠 속에서도 보이는 초록 표지 */}
+      <Door gameRef={gameRef} id={END_DOOR} position={[0, 0, -LENGTH]} rotY={0} map={tex.endDoor} />
+      <mesh position={[0, DOOR_HEIGHT + 0.32, -LENGTH + 0.02]}>
+        <planeGeometry args={[0.6, 0.225]} />
+        <meshStandardMaterial map={tex.exitSign} emissiveMap={tex.exitSign} emissive="#ffffff" emissiveIntensity={0.9} />
+      </mesh>
+      <ExitStairs gameRef={gameRef} geo={geo} concrete={tex.concrete} />
+
+      {ITEMS.map((spot) => (
+        <KeyItem key={spot.id} gameRef={gameRef} spot={spot} tag={spot.id === "roomKey" ? tex.keyTag : tex.exitSign} />
+      ))}
 
       {/* 벽의 낙서 */}
       <mesh rotation-y={Math.PI / 2} position={[-HALF_WIDTH + 0.01, 1.6, -40]}>
@@ -200,7 +232,7 @@ function RoomShell({
 }: {
   room: Room;
   geo: Record<"roomFloor" | "roomCeiling" | "roomBack" | "roomSide", THREE.BufferGeometry>;
-  tex: Record<"wall" | "floor" | "ceiling" | "mattress", THREE.Texture>;
+  tex: Record<"wall" | "floor" | "ceiling" | "mattress" | "writing", THREE.Texture>;
 }) {
   const { cx, cz } = room;
   const side = room.door.side;
@@ -245,6 +277,24 @@ function RoomShell({
       {room.props.map((p, i) => (
         <PropModel key={i} prop={p} mattress={tex.mattress} />
       ))}
+
+      {/* 잠겨 있던 방: 벽마다 같은 낙서 */}
+      {room.door.key && (
+        <>
+          <mesh rotation-y={facingIn} position={[backX - side * 0.01, 2.45, cz]}>
+            <planeGeometry args={[3.2, 0.8]} />
+            <meshStandardMaterial map={tex.writing} transparent roughness={0.6} />
+          </mesh>
+          <mesh position={[cx, 1.25, cz - ROOM_WIDTH / 2 + 0.01]} rotation-z={0.05}>
+            <planeGeometry args={[2.9, 0.72]} />
+            <meshStandardMaterial map={tex.writing} transparent roughness={0.6} />
+          </mesh>
+          <mesh rotation-y={Math.PI} position={[cx, 1.9, cz + ROOM_WIDTH / 2 - 0.01]} rotation-z={-0.07}>
+            <planeGeometry args={[2.9, 0.72]} />
+            <meshStandardMaterial map={tex.writing} transparent roughness={0.6} />
+          </mesh>
+        </>
+      )}
     </group>
   );
 }
@@ -364,8 +414,9 @@ function Door({
   useEffect(() => {
     const s = gameRef.current;
     const meshes = [leaf.current, opening.current].filter((m): m is THREE.Mesh => m !== null);
+    const interact: Interactable = { type: "door", door: id };
     for (const m of meshes) {
-      m.userData.door = id;
+      m.userData.interact = interact;
       s.targets.push(m);
     }
     return () => {
@@ -378,39 +429,44 @@ function Door({
 
   useFrame((_, delta) => {
     const h = hinge.current;
-    if (!h || id === END_DOOR) return;
+    if (!h) return;
     const s = gameRef.current;
+    if (id === END_DOOR) {
+      // 비상구는 천천히, 일정한 속도로 열린다
+      h.rotation.y = Math.min(s.exitOpen ? DOOR_OPEN_ANGLE : 0, h.rotation.y + delta * 0.5);
+      s.exitAngle = h.rotation.y;
+      return;
+    }
     const target = s.doorOpen[id] ? DOOR_OPEN_ANGLE : 0;
+    const slam = s.slamDoor === id;
     const before = h.rotation.y;
-    h.rotation.y += (target - before) * Math.min(1, delta * 4);
+    h.rotation.y += (target - before) * Math.min(1, delta * (slam ? 16 : 4));
     if (!target && before > 0.04 && h.rotation.y <= 0.04) {
       h.rotation.y = 0;
-      s.audio?.thud();
+      if (slam) s.slamDoor = null;
+      s.audio?.thud(slam ? 0.7 : 0.3);
     }
   });
 
-  const isEnd = id === END_DOOR;
   const frame = "#2a2019";
   return (
     <group position={position} rotation-y={rotY}>
       {/* 문틀 */}
       {[-1, 1].map((s) => (
         <mesh key={s} position={[s * (DOOR_WIDTH / 2 + 0.035), (DOOR_HEIGHT + 0.07) / 2, 0]}>
-          <boxGeometry args={[0.07, DOOR_HEIGHT + 0.07, isEnd ? 0.06 : 0.14]} />
+          <boxGeometry args={[0.07, DOOR_HEIGHT + 0.07, 0.14]} />
           <meshStandardMaterial color={frame} roughness={0.85} />
         </mesh>
       ))}
       <mesh position={[0, DOOR_HEIGHT + 0.035, 0]}>
-        <boxGeometry args={[DOOR_WIDTH + 0.14, 0.07, isEnd ? 0.06 : 0.14]} />
+        <boxGeometry args={[DOOR_WIDTH + 0.14, 0.07, 0.14]} />
         <meshStandardMaterial color={frame} roughness={0.85} />
       </mesh>
-      {!isEnd && (
-        // 보이지 않는 문틀 판: 광선 검사에만 쓴다 (Raycaster 는 visible 과 상관없이 맞힌다)
-        <mesh ref={opening} position={[0, DOOR_HEIGHT / 2, 0]} visible={false}>
-          <planeGeometry args={[DOOR_WIDTH, DOOR_HEIGHT]} />
-          <meshBasicMaterial side={THREE.DoubleSide} />
-        </mesh>
-      )}
+      {/* 보이지 않는 문틀 판: 광선 검사에만 쓴다 (Raycaster 는 visible 과 상관없이 맞힌다) */}
+      <mesh ref={opening} position={[0, DOOR_HEIGHT / 2, 0]} visible={false}>
+        <planeGeometry args={[DOOR_WIDTH, DOOR_HEIGHT]} />
+        <meshBasicMaterial side={THREE.DoubleSide} />
+      </mesh>
       {plate && (
         <mesh position={[0, DOOR_HEIGHT + 0.22, 0.012]}>
           <planeGeometry args={[0.26, 0.11]} />
@@ -418,7 +474,7 @@ function Door({
         </mesh>
       )}
 
-      <group ref={hinge} position={[-DOOR_WIDTH / 2, 0, isEnd ? 0.03 : 0]}>
+      <group ref={hinge} position={[-DOOR_WIDTH / 2, 0, 0]}>
         <mesh ref={leaf} position={[DOOR_WIDTH / 2, DOOR_HEIGHT / 2, 0]}>
           <boxGeometry args={[DOOR_WIDTH - 0.02, DOOR_HEIGHT - 0.01, 0.05]} />
           <meshStandardMaterial map={map} roughness={0.85} />
@@ -441,6 +497,128 @@ function Door({
           )}
         </mesh>
       </group>
+    </group>
+  );
+}
+
+// ---------------------------------------------------------------- 비상계단
+
+/** 비상구 너머 콘크리트 계단실. 문이 열리기 시작하면 불빛이 새어 나온다 */
+function ExitStairs({
+  gameRef,
+  geo,
+  concrete,
+}: {
+  gameRef: RefObject<HorrorState>;
+  geo: Record<"stairFloor" | "stairSide" | "stairBack", THREE.BufferGeometry>;
+  concrete: THREE.Texture;
+}) {
+  const light = useRef<THREE.PointLight>(null);
+  useFrame((_, delta) => {
+    const l = light.current;
+    if (!l) return;
+    // 조명은 벽을 통과하므로 문이 닫혀 있는 동안은 꺼 둔다
+    const target = gameRef.current.exitAngle > 0.05 ? 2.5 : 0;
+    l.intensity += (target - l.intensity) * Math.min(1, delta * 2);
+  });
+
+  const zc = -LENGTH - EXIT_DEPTH / 2;
+  const material = <meshStandardMaterial map={concrete} roughness={0.95} />;
+  return (
+    <group>
+      <mesh geometry={geo.stairFloor} rotation-x={-Math.PI / 2} position={[0, 0, zc]}>
+        {material}
+      </mesh>
+      <mesh geometry={geo.stairFloor} rotation-x={Math.PI / 2} position={[0, HEIGHT, zc]}>
+        {material}
+      </mesh>
+      <mesh geometry={geo.stairSide} rotation-y={Math.PI / 2} position={[-HALF_WIDTH, HEIGHT / 2, zc]}>
+        {material}
+      </mesh>
+      <mesh geometry={geo.stairSide} rotation-y={-Math.PI / 2} position={[HALF_WIDTH, HEIGHT / 2, zc]}>
+        {material}
+      </mesh>
+      <mesh geometry={geo.stairBack} position={[0, HEIGHT / 2, -LENGTH - EXIT_DEPTH]}>
+        {material}
+      </mesh>
+      {/* 위로 올라가는 계단 (왼쪽은 열린 문짝 자리라 비운다) */}
+      {Array.from({ length: 8 }, (_, i) => {
+        const h = 0.18 * (i + 1);
+        return (
+          <mesh key={i} position={[0.45, h / 2, -LENGTH - 0.95 - i * 0.28]}>
+            <boxGeometry args={[1.2, h, 0.28]} />
+            {material}
+          </mesh>
+        );
+      })}
+      <pointLight ref={light} position={[0, 2.5, zc]} color="#d6f2dc" intensity={0} distance={6} decay={1.5} />
+    </group>
+  );
+}
+
+// ---------------------------------------------------------------- 열쇠
+
+/** 가구 위에 놓인 열쇠. 손전등이 없어도 찾을 수 있게 가끔 반짝인다. 주우면 사라진다 */
+function KeyItem({ gameRef, spot, tag }: { gameRef: RefObject<HorrorState>; spot: ItemSpot; tag: THREE.Texture }) {
+  const group = useRef<THREE.Group>(null);
+  const hit = useRef<THREE.Mesh>(null);
+  const glint = useRef<THREE.MeshBasicMaterial>(null);
+
+  useEffect(() => {
+    const s = gameRef.current;
+    const m = hit.current;
+    if (!m) return;
+    const interact: Interactable = { type: "item", item: spot.id };
+    m.userData.interact = interact;
+    s.targets.push(m);
+    return () => {
+      const i = s.targets.indexOf(m);
+      if (i >= 0) s.targets.splice(i, 1);
+    };
+  }, [gameRef, spot.id]);
+
+  useFrame(({ clock }) => {
+    const g = group.current;
+    if (!g) return;
+    g.visible = !gameRef.current.items.has(spot.id);
+    if (glint.current) {
+      glint.current.opacity = 0.15 + 0.85 * Math.max(0, Math.sin(clock.elapsedTime * 2.2 + spot.x)) ** 8;
+    }
+  });
+
+  const brass = <meshStandardMaterial color="#b08d57" metalness={0.8} roughness={0.35} />;
+  return (
+    <group ref={group} position={[spot.x, spot.y, spot.z]} rotation-y={spot.rotY}>
+      <mesh rotation-x={Math.PI / 2} position={[-0.05, 0.004, 0]}>
+        <torusGeometry args={[0.02, 0.006, 8, 20]} />
+        {brass}
+      </mesh>
+      <mesh position={[0, 0.004, 0]}>
+        <boxGeometry args={[0.075, 0.007, 0.011]} />
+        {brass}
+      </mesh>
+      <mesh position={[0.028, 0.004, 0.012]}>
+        <boxGeometry args={[0.012, 0.007, 0.022]} />
+        {brass}
+      </mesh>
+      <mesh position={[0.012, 0.004, 0.009]}>
+        <boxGeometry args={[0.008, 0.007, 0.016]} />
+        {brass}
+      </mesh>
+      {/* 꼬리표 */}
+      <mesh rotation={[-Math.PI / 2, 0, 0.4]} position={[-0.1, 0.002, 0.02]}>
+        <planeGeometry args={[0.06, 0.03]} />
+        <meshStandardMaterial map={tag} roughness={0.8} />
+      </mesh>
+      <mesh position={[-0.05, 0.014, 0]}>
+        <sphereGeometry args={[0.008, 8, 6]} />
+        <meshBasicMaterial ref={glint} color="#fff3c4" transparent />
+      </mesh>
+      {/* 보이지 않는 큰 판정 구: 작은 열쇠도 쉽게 조준되게 */}
+      <mesh ref={hit} visible={false}>
+        <sphereGeometry args={[0.15, 8, 6]} />
+        <meshBasicMaterial />
+      </mesh>
     </group>
   );
 }

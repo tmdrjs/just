@@ -267,3 +267,43 @@ export const hairCurtainTexture = () =>
     }
     g.globalAlpha = 1;
   });
+
+/** 초록 비상구 표지 (스스로 빛나게 emissiveMap 으로도 쓴다) */
+export const exitSignTexture = () =>
+  canvasTexture(256, 96, (g) => {
+    g.fillStyle = "#0a7a3c";
+    g.fillRect(0, 0, 256, 96);
+    g.fillStyle = "#f2fff4";
+    // 달려 나가는 사람
+    g.beginPath();
+    g.arc(42, 24, 9, 0, Math.PI * 2);
+    g.fill();
+    g.lineWidth = 8;
+    g.lineCap = "round";
+    g.strokeStyle = "#f2fff4";
+    g.beginPath();
+    g.moveTo(40, 36);
+    g.lineTo(34, 60);
+    g.lineTo(48, 78);
+    g.moveTo(34, 60);
+    g.lineTo(18, 74);
+    g.moveTo(38, 44);
+    g.lineTo(56, 52);
+    g.moveTo(38, 44);
+    g.lineTo(22, 50);
+    g.stroke();
+    g.font = "bold 40px 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif";
+    g.textBaseline = "middle";
+    g.fillText("비상구", 80, 42);
+    g.font = "bold 18px 'Helvetica Neue', Arial, sans-serif";
+    g.fillText("EXIT", 82, 74);
+  });
+
+/** 계단실 콘크리트 */
+export const concreteTexture = () =>
+  canvasTexture(128, 128, (g) => {
+    g.fillStyle = "#5c5b57";
+    g.fillRect(0, 0, 128, 128);
+    stains(g, 10, "rgba(30,28,24,0.4)");
+    grain(g, 30);
+  });

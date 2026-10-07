@@ -14,7 +14,7 @@ import {
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { HorrorAudio } from "./audio";
-import { EYE_HEIGHT, START_Z } from "./layout";
+import { EYE_HEIGHT, ITEM_NAME, START_Z, type ItemId } from "./layout";
 import { createHorrorState, resetRun, type CaughtReason, type HorrorState, type Phase } from "./state";
 import { World, type WorldEvents } from "./World";
 
@@ -37,7 +37,7 @@ const GAME_KEYS = new Set([
 
 const CAUGHT_TEXT: Record<CaughtReason, string> = {
   turned: "뒤를 돌아봤구나.",
-  waited: "돌아보지 않아도 소용없었다.",
+  waited: "너무 오래 머뭇거렸다.",
 };
 
 /** 1인칭 3D 공포게임 "복도". 데스크톱은 마우스 잠금 + WASD, 터치는 끌어서 둘러보기 + 걷기 버튼 */
@@ -52,6 +52,7 @@ export function HorrorGame({ onExit }: { onExit: () => void }) {
   const [prompt, setPrompt] = useState<string | null>(null);
   const [scareId, setScareId] = useState(0);
   const [caught, setCaught] = useState<CaughtReason | null>(null);
+  const [items, setItems] = useState<ItemId[]>([]);
   const [muted, setMuted] = useState(false);
   const [touch] = useState(() => window.matchMedia("(hover: none)").matches);
   const msgSeq = useRef(0);
@@ -110,7 +111,7 @@ export function HorrorGame({ onExit }: { onExit: () => void }) {
 
   const start = () => {
     play();
-    say("복도 끝의 문까지 가자.", 3500);
+    say("복도 끝 비상구로 나가자.", 3500);
   };
 
   const restart = () => {
@@ -118,6 +119,7 @@ export function HorrorGame({ onExit }: { onExit: () => void }) {
     setCaught(null);
     setMessage(null);
     setPrompt(null);
+    setItems([]);
     setRun((r) => r + 1);
     start();
   };
@@ -126,10 +128,18 @@ export function HorrorGame({ onExit }: { onExit: () => void }) {
     () => ({
       onMessage: say,
       onFocus: setPrompt,
+      onItems: setItems,
       onScare: () => setScareId((n) => n + 1),
       onCaught: (reason) => {
         setCaught(reason);
         setPhase("caught");
+        if (document.pointerLockElement) document.exitPointerLock();
+      },
+      onEscape: () => {
+        setPhase("escaped");
+        setMessage(null);
+        // 계단실에 들어서는 순간 모든 소리가 끊긴다
+        void gameRef.current.audio?.suspend();
         if (document.pointerLockElement) document.exitPointerLock();
       },
     }),
@@ -152,7 +162,7 @@ export function HorrorGame({ onExit }: { onExit: () => void }) {
       if (e.code === "Escape") {
         // 마우스가 잠겨 있으면 브라우저가 Esc 로 잠금을 풀고 pointerlockchange 로 일시정지된다
         if (phaseRef.current === "playing") pause();
-        else if (phaseRef.current === "intro" || phaseRef.current === "caught") onExit();
+        else if (phaseRef.current !== "paused") onExit();
         return;
       }
       if (!GAME_KEYS.has(e.code)) return;
@@ -278,6 +288,15 @@ export function HorrorGame({ onExit }: { onExit: () => void }) {
         </HudButton>
       </div>
 
+      {items.length > 0 && (phase === "playing" || phase === "paused") && (
+        <ul className="pointer-events-none absolute top-3 left-3 space-y-1 text-xs text-fg/85" aria-label="가진 물건">
+          {items.map((id) => (
+            <li key={id} className="rounded-md bg-black/50 px-2 py-1 backdrop-blur-sm">
+              🔑 {ITEM_NAME[id]}
+            </li>
+          ))}
+        </ul>
+      )}
       {phase === "playing" && !touch && (
         <p className="pointer-events-none absolute bottom-3 left-4 text-[11px] text-muted/70">
           E 상호작용 · Esc 일시정지 · Shift 달리기 · M 소리
@@ -301,7 +320,7 @@ export function HorrorGame({ onExit }: { onExit: () => void }) {
         <Screen>
           <p className="text-xs tracking-[0.3em] text-accent-hover">지하 3층</p>
           <h2 className="text-3xl font-bold tracking-widest">복도</h2>
-          <p className="text-sm text-sub">복도 끝의 문까지 가세요.</p>
+          <p className="text-sm text-sub">복도 끝 비상구로 빠져나가세요.</p>
           <ul className="space-y-1 text-xs text-muted">
             {touch ? (
               <>
@@ -311,7 +330,7 @@ export function HorrorGame({ onExit }: { onExit: () => void }) {
             ) : (
               <>
                 <li>WASD · 방향키 이동 · Shift 달리기</li>
-                <li>마우스로 둘러보기 · E 문 열기·닫기</li>
+                <li>마우스로 둘러보기 · E 문 열기 · 줍기</li>
                 <li>Esc 일시정지 · M 소리</li>
               </>
             )}
@@ -356,14 +375,28 @@ export function HorrorGame({ onExit }: { onExit: () => void }) {
           </div>
         </Screen>
       )}
+      {phase === "escaped" && (
+        <Screen className="animate-fade-slow bg-black">
+          <h2 className="text-3xl font-bold tracking-widest">탈출했다.</h2>
+          <p className="text-sm text-sub">끝까지 돌아보지 않았다.</p>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={onExit}>
+              기획실로
+            </Button>
+            <Button variant="primary" onClick={restart}>
+              다시 하기
+            </Button>
+          </div>
+        </Screen>
+      )}
     </div>
   );
 }
 
-function Screen({ children }: { children: ReactNode }) {
+function Screen({ children, className = "animate-fade-in bg-black/70" }: { children: ReactNode; className?: string }) {
   return (
     <div
-      className="animate-fade-in absolute inset-0 flex items-center justify-center bg-black/70 p-6 text-center"
+      className={`absolute inset-0 flex items-center justify-center p-6 text-center ${className}`}
       onPointerDown={(e) => e.stopPropagation()}
     >
       <div className="flex max-w-sm flex-col items-center gap-4">{children}</div>
